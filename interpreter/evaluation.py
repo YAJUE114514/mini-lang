@@ -1,4 +1,6 @@
 # evaluation.py
+import time
+
 from interpreter.parser import ASTNode, Program, Decl, Expr, Literal, Identifier, Quot, List
 from interpreter.builtins import BUILTIN_SCOPE
 
@@ -15,6 +17,8 @@ class RunTime:
         self.scope = {}
         self.builtin_scope = BUILTIN_SCOPE
         self.parent = parent
+        self.recursion_depth = 0
+        self.max_recursion_depth = 100
 
     def evaluate(self, node: ASTNode):
         node.accept(self)
@@ -37,13 +41,20 @@ class RunTime:
         self.stack.append(literal.content)
 
     def visit_identifier(self, identifier: Identifier):
+        if self.recursion_depth >= self.max_recursion_depth:
+            self.recursion_depth = 0
+            raise RunTimeError("Maximum recursion depth reached")
+
+        self.recursion_depth += 1
         name = identifier.name
         if name in self.scope:
             expr = self.scope[name]
             expr.accept(self)
+            self.recursion_depth -= 1
         elif name in self.builtin_scope:
             func = self.builtin_scope[name]
             func(self)
+            self.recursion_depth -= 1
         else:
             cur_runtime = self
             while cur_runtime.parent:
@@ -51,6 +62,7 @@ class RunTime:
                 if name in cur_runtime.scope:
                     expr = cur_runtime.scope[name]
                     expr.accept(self)
+                    self.recursion_depth -= 1
                     return
             raise RunTimeError(f"Unknown identifier {name}")
 
@@ -91,9 +103,9 @@ def repl() -> None:
             tokens = lexer.parse(source)
             ast    = parser.parse(tokens)
             runtime.evaluate(ast)
-            print("\n".join(map(str, runtime.stack)))
         except Exception as exc:
-            print(f"error: {exc}", file=sys.stderr)
+            print(f"{exc.__class__.__name__}: {exc}", file=sys.stderr)
+            time.sleep(0.5)
 
 if __name__ == "__main__":
     repl()
